@@ -29,7 +29,14 @@ useHydratedHead({
 </script>
 
 <template>
-  <div :id="`status-${status.id}`" flex flex-col gap-2 pt2 pb1 ps-3 pe-4 relative :lang="status.language ?? undefined" aria-roledescription="status-details">
+  <div
+    :id="`status-${status.id}`"
+    flex flex-col gap-2 pt2 pb1 ps-3 pe-4 relative
+    tabindex="-1"
+    focus:outline-none focus-visible:ring="2 primary inset"
+    :lang="status.language ?? undefined"
+    aria-roledescription="status-details"
+  >
     <StatusActionsMore :status="status" :details="true" absolute inset-ie-2 top-2 @after-edit="$emit('refetchStatus')" />
     <NuxtLink :to="getAccountRoute(status.account)" rounded-full hover:bg-active transition-100 pe5 me-a>
       <AccountHoverWrapper :account="status.account">

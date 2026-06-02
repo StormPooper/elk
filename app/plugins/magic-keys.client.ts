@@ -79,7 +79,7 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
   }
   whenever(logicAnd(isAuthenticated, notUsingInput, keys.q), composeWithQuote)
 
-  const statusSelector = '[aria-roledescription="status-card"]'
+  const statusSelector = '[aria-roledescription="status-card"], [aria-roledescription="status-details"]'
 
   function getVisibleTopLevelStatuses(): HTMLElement[] {
     return Array.from(document.querySelectorAll<HTMLElement>(statusSelector))
@@ -142,9 +142,16 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
       return
     }
 
+    // At the navigation boundary, scroll half a viewport so virtua may
+    // mount more cards. Skip if we would land past the document edge
+    const scrollDelta = window.innerHeight / 2 * (direction === 'next' ? 1 : -1)
+    const targetY = window.scrollY + scrollDelta
+    const maxY = document.documentElement.scrollHeight - window.innerHeight
+    if (targetY < 0 || targetY > maxY)
+      return
+
     const renderedBeforeNudge = new Set(statuses)
-    const nudge = window.innerHeight / 2
-    y.value += direction === 'next' ? nudge : -nudge
+    y.value = targetY
     requestAnimationFrame(() => {
       const after = getVisibleTopLevelStatuses()
       const newCardsMounted = after.some(c => !renderedBeforeNudge.has(c))
