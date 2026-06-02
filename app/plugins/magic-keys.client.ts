@@ -81,12 +81,12 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
 
   const statusSelector = '[aria-roledescription="status-card"]'
 
-  function visibleTopLevelStatuses(): HTMLElement[] {
+  function getVisibleTopLevelStatuses(): HTMLElement[] {
     return Array.from(document.querySelectorAll<HTMLElement>(statusSelector))
       .filter(c => !c.parentElement?.closest(statusSelector) && c.offsetParent !== null)
   }
 
-  function topBarHeight(): number {
+  function getTopBarHeight(): number {
     return document.querySelector<HTMLElement>('[data-top-bar]')?.offsetHeight ?? 0
   }
 
@@ -94,17 +94,16 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
     document
       ?.querySelector<HTMLElement>('button#elk_show_new_items')
       ?.click()
-    // Instant scroll so virtua has a stable scroll position on the next
-    // animation frame. Smooth scroll would still be in flight when we
-    // look up the first card.
+    // Instant scroll then wait one frame for virtua to mount the top cards
+    // (smooth scroll would still be mid-animation here)
     y.value = 0
     requestAnimationFrame(() => {
-      visibleTopLevelStatuses()[0]?.focus({ preventScroll: true })
+      getVisibleTopLevelStatuses()[0]?.focus({ preventScroll: true })
     })
   }
   whenever(logicAnd(isAuthenticated, notUsingInput, keys['.']), showNewItems)
 
-  function pickNextTarget(
+  function tryGetNextTarget(
     direction: 'next' | 'previous',
     statuses: HTMLElement[],
     topBar: number,
@@ -132,12 +131,12 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
   }
 
   function focusNextOrPreviousStatus(direction: 'next' | 'previous') {
-    const statuses = visibleTopLevelStatuses()
+    const statuses = getVisibleTopLevelStatuses()
     if (statuses.length === 0)
       return
 
-    const topBar = topBarHeight()
-    const target = pickNextTarget(direction, statuses, topBar)
+    const topBar = getTopBarHeight()
+    const target = tryGetNextTarget(direction, statuses, topBar)
     if (target) {
       focusAndAlign(target, topBar)
       return
@@ -147,12 +146,12 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
     const nudge = window.innerHeight / 2
     y.value += direction === 'next' ? nudge : -nudge
     requestAnimationFrame(() => {
-      const after = visibleTopLevelStatuses()
+      const after = getVisibleTopLevelStatuses()
       const newCardsMounted = after.some(c => !renderedBeforeNudge.has(c))
       if (!newCardsMounted)
         return
-      const retryTopBar = topBarHeight()
-      const retryTarget = pickNextTarget(direction, after, retryTopBar)
+      const retryTopBar = getTopBarHeight()
+      const retryTarget = tryGetNextTarget(direction, after, retryTopBar)
       if (retryTarget)
         focusAndAlign(retryTarget, retryTopBar)
     })
