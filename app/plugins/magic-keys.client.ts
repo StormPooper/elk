@@ -105,46 +105,55 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
   }
   whenever(logicAnd(isAuthenticated, notUsingInput, keys['.']), showNewItems)
 
-  function focusNextOrPreviousStatus(direction: 'next' | 'previous', retried = false) {
-    const statuses = visibleTopLevelStatuses()
-    if (statuses.length === 0)
-      return
-
+  function pickNextTarget(
+    direction: 'next' | 'previous',
+    statuses: HTMLElement[],
+  ): HTMLElement | null {
     const innerActive = activeElement.value?.closest<HTMLElement>(statusSelector) ?? null
     const current = innerActive ? statuses.find(s => s.contains(innerActive)) ?? null : null
-
-    let target: HTMLElement
     if (!current) {
       const distances = statuses.map(distanceFromTopBar)
       const nearestToTopBar = distances.reduce((best, d, i) => d < distances[best] ? i : best, 0)
-      target = statuses[nearestToTopBar]
+      return statuses[nearestToTopBar]
     }
-    else {
-      const currentIndex = statuses.indexOf(current)
-      const nextIndex = direction === 'next'
-        ? Math.min(currentIndex + 1, statuses.length - 1)
-        : Math.max(0, currentIndex - 1)
-      target = statuses[nextIndex]
-    }
+    const currentIndex = statuses.indexOf(current)
+    const nextIndex = direction === 'next'
+      ? Math.min(currentIndex + 1, statuses.length - 1)
+      : Math.max(0, currentIndex - 1)
+    const target = statuses[nextIndex]
+    return target === current ? null : target
+  }
 
-    if (current && target === current) {
-      if (retried)
-        return
-      const renderedBeforeNudge = new Set(statuses)
-      const nudge = window.innerHeight / 2
-      y.value += direction === 'next' ? nudge : -nudge
-      requestAnimationFrame(() => {
-        const newCardsMounted = visibleTopLevelStatuses().some(c => !renderedBeforeNudge.has(c))
-        if (newCardsMounted)
-          focusNextOrPreviousStatus(direction, true)
-      })
-      return
-    }
-
+  function focusAndAlign(target: HTMLElement) {
     target.focus({ preventScroll: true })
     const delta = target.getBoundingClientRect().top - topBarHeight
     if (delta !== 0)
       y.value += delta
+  }
+
+  function focusNextOrPreviousStatus(direction: 'next' | 'previous') {
+    const statuses = visibleTopLevelStatuses()
+    if (statuses.length === 0)
+      return
+
+    const target = pickNextTarget(direction, statuses)
+    if (target) {
+      focusAndAlign(target)
+      return
+    }
+
+    const renderedBeforeNudge = new Set(statuses)
+    const nudge = window.innerHeight / 2
+    y.value += direction === 'next' ? nudge : -nudge
+    requestAnimationFrame(() => {
+      const after = visibleTopLevelStatuses()
+      const newCardsMounted = after.some(c => !renderedBeforeNudge.has(c))
+      if (!newCardsMounted)
+        return
+      const retryTarget = pickNextTarget(direction, after)
+      if (retryTarget)
+        focusAndAlign(retryTarget)
+    })
   }
 
   whenever(logicAnd(notUsingInput, keys.j), () => focusNextOrPreviousStatus('next'))
