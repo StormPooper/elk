@@ -41,6 +41,7 @@ const showBackButton = computed(() => {
 <template>
   <div ref="container" :class="containerClass">
     <div
+      data-top-bar
       sticky top-0 z-20
       pt="[env(safe-area-inset-top,0)]"
       bg="[rgba(var(--rgb-bg-base),0.7)]"

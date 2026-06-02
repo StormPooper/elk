@@ -80,15 +80,14 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
   whenever(logicAnd(isAuthenticated, notUsingInput, keys.q), composeWithQuote)
 
   const statusSelector = '[aria-roledescription="status-card"]'
-  const topBarHeight = 58
 
   function visibleTopLevelStatuses(): HTMLElement[] {
     return Array.from(document.querySelectorAll<HTMLElement>(statusSelector))
       .filter(c => !c.parentElement?.closest(statusSelector) && c.offsetParent !== null)
   }
 
-  function distanceFromTopBar(el: HTMLElement) {
-    return Math.abs(el.getBoundingClientRect().top - topBarHeight)
+  function topBarHeight(): number {
+    return document.querySelector<HTMLElement>('[data-top-bar]')?.offsetHeight ?? 0
   }
 
   const showNewItems = () => {
@@ -108,11 +107,12 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
   function pickNextTarget(
     direction: 'next' | 'previous',
     statuses: HTMLElement[],
+    topBar: number,
   ): HTMLElement | null {
     const innerActive = activeElement.value?.closest<HTMLElement>(statusSelector) ?? null
     const current = innerActive ? statuses.find(s => s.contains(innerActive)) ?? null : null
     if (!current) {
-      const distances = statuses.map(distanceFromTopBar)
+      const distances = statuses.map(el => Math.abs(el.getBoundingClientRect().top - topBar))
       const nearestToTopBar = distances.reduce((best, d, i) => d < distances[best] ? i : best, 0)
       return statuses[nearestToTopBar]
     }
@@ -124,9 +124,9 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
     return target === current ? null : target
   }
 
-  function focusAndAlign(target: HTMLElement) {
+  function focusAndAlign(target: HTMLElement, topBar: number) {
     target.focus({ preventScroll: true })
-    const delta = target.getBoundingClientRect().top - topBarHeight
+    const delta = target.getBoundingClientRect().top - topBar
     if (delta !== 0)
       y.value += delta
   }
@@ -136,9 +136,10 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
     if (statuses.length === 0)
       return
 
-    const target = pickNextTarget(direction, statuses)
+    const topBar = topBarHeight()
+    const target = pickNextTarget(direction, statuses, topBar)
     if (target) {
-      focusAndAlign(target)
+      focusAndAlign(target, topBar)
       return
     }
 
@@ -150,9 +151,10 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
       const newCardsMounted = after.some(c => !renderedBeforeNudge.has(c))
       if (!newCardsMounted)
         return
-      const retryTarget = pickNextTarget(direction, after)
+      const retryTopBar = topBarHeight()
+      const retryTarget = pickNextTarget(direction, after, retryTopBar)
       if (retryTarget)
-        focusAndAlign(retryTarget)
+        focusAndAlign(retryTarget, retryTopBar)
     })
   }
 
