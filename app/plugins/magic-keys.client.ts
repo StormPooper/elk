@@ -7,7 +7,6 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
   const router = useRouter()
   const i18n = useNuxtApp().$i18n
   const { y } = useWindowScroll({ behavior: 'instant' })
-  const virtualScroller = usePreferences('experimentalVirtualScroller')
 
   // disable shortcuts when focused on inputs (https://vueuse.org/core/usemagickeys/#conditionally-disable)
   const activeElement = useActiveElement()
@@ -88,53 +87,44 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
   }
   whenever(logicAnd(isAuthenticated, notUsingInput, keys['.']), showNewItems)
 
-  // TODO: virtual scroller cannot load off-screen post
-  // that prevents focusing next post properly
-  // we disabled this shortcut when enabled virtual scroller
-  if (!virtualScroller.value) {
-    const statusSelector = '[aria-roledescription="status-card"]'
+  const statusSelector = '[aria-roledescription="status-card"]'
 
-    // find the nearest status element id traversing up from the current active element
-    // `activeElement` can be some of an element within a status element
-    // otherwise, reach to the root `<html>`
-    function getActiveStatueId(element: HTMLElement): string | undefined {
-      if (element.nodeName === 'HTML')
-        return undefined
+  function focusNextOrPreviousStatus(direction: 'next' | 'previous') {
+    const allCards = Array.from(document.querySelectorAll<HTMLElement>(statusSelector))
+    // top-level only: skip status-cards embedded inside another (e.g. quote-boosts)
+    const statuses = allCards.filter(c => !c.parentElement?.closest(statusSelector))
+    if (statuses.length === 0)
+      return
 
-      if (element.matches(statusSelector))
-        return element.id
+    const topBarHeight = 58
+    const innerActive = activeElement.value?.closest<HTMLElement>(statusSelector) ?? null
+    const current = innerActive ? statuses.find(s => s.contains(innerActive)) ?? null : null
+    const currentIndex = current ? statuses.indexOf(current) : -1
 
-      return getActiveStatueId(element.parentNode as HTMLElement)
+    let target: HTMLElement
+    if (currentIndex === -1) {
+      target = statuses[0]
+    }
+    else {
+      const nextIndex = direction === 'next'
+        ? Math.min(currentIndex + 1, statuses.length - 1)
+        : Math.max(0, currentIndex - 1)
+      target = statuses[nextIndex]
     }
 
-    function focusNextOrPreviousStatus(direction: 'next' | 'previous') {
-      const activeStatusId = activeElement.value ? getActiveStatueId(activeElement.value) : undefined
-      const nextOrPreviousStatusId = getNextOrPreviousStatusId(activeStatusId, direction)
-      if (nextOrPreviousStatusId) {
-        const status = document.getElementById(nextOrPreviousStatusId)
-        if (status) {
-          status.focus({ preventScroll: true })
-          const topBarHeight = 58
-          y.value += status.getBoundingClientRect().top - topBarHeight
-        }
-      }
+    // No top-level card to advance to: nudge the viewport so virtua can extend
+    // its buffer (or the paginator's end-anchor can come into view). Constant
+    // amount so repeated presses always make progress.
+    if (current && target === current) {
+      const nudge = window.innerHeight / 2
+      y.value += direction === 'next' ? nudge : -nudge
+      return
     }
 
-    function getNextOrPreviousStatusId(currentStatusId: string | undefined, direction: 'next' | 'previous'): string | undefined {
-      const statusIds = Array.from(document.querySelectorAll(statusSelector), s => s.id)
-      if (currentStatusId === undefined) {
-        // if there is no selection, always focus on the first status
-        return statusIds[0]
-      }
-
-      const currentIndex = statusIds.findIndex(id => id === currentStatusId)
-      const statusId = direction === 'next'
-        ? statusIds[Math.min(currentIndex + 1, statusIds.length)]
-        : statusIds[Math.max(0, currentIndex - 1)]
-      return statusId
-    }
-
-    whenever(logicAnd(notUsingInput, keys.j), () => focusNextOrPreviousStatus('next'))
-    whenever(logicAnd(notUsingInput, keys.k), () => focusNextOrPreviousStatus('previous'))
+    target.focus({ preventScroll: true })
+    y.value += target.getBoundingClientRect().top - topBarHeight
   }
+
+  whenever(logicAnd(notUsingInput, keys.j), () => focusNextOrPreviousStatus('next'))
+  whenever(logicAnd(notUsingInput, keys.k), () => focusNextOrPreviousStatus('previous'))
 })
