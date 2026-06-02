@@ -79,33 +79,56 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
   }
   whenever(logicAnd(isAuthenticated, notUsingInput, keys.q), composeWithQuote)
 
+  const statusSelector = '[aria-roledescription="status-card"]'
+
   const showNewItems = () => {
     // TODO: find a better solution than clicking buttons...
     document
       ?.querySelector<HTMLElement>('button#elk_show_new_items')
       ?.click()
+    // Reset scroll to the top of the timeline and focus the first card so
+    // subsequent j/k continues from the top. Instant scroll so virtua has a
+    // stable scroll position when we look up the first card on the next
+    // frame — smooth scroll would race with the rAF and we'd focus whichever
+    // card happened to be at the top of the rendered set mid-scroll.
+    y.value = 0
+    requestAnimationFrame(() => {
+      const first = Array.from(document.querySelectorAll<HTMLElement>(statusSelector))
+        .find(c => !c.parentElement?.closest(statusSelector) && c.offsetParent !== null)
+      first?.focus({ preventScroll: true })
+    })
   }
   whenever(logicAnd(isAuthenticated, notUsingInput, keys['.']), showNewItems)
 
-  const statusSelector = '[aria-roledescription="status-card"]'
-
-  function focusNextOrPreviousStatus(direction: 'next' | 'previous') {
+  function focusNextOrPreviousStatus(direction: 'next' | 'previous', retried = false) {
     const allCards = Array.from(document.querySelectorAll<HTMLElement>(statusSelector))
-    // top-level only: skip status-cards embedded inside another (e.g. quote-boosts)
-    const statuses = allCards.filter(c => !c.parentElement?.closest(statusSelector))
+    // Top-level only (skip status-cards embedded inside another, e.g.
+    // quote-boosts), and visible (offsetParent === null catches display:none,
+    // hidden subtrees, detached nodes).
+    const statuses = allCards.filter(
+      c => !c.parentElement?.closest(statusSelector) && c.offsetParent !== null,
+    )
     if (statuses.length === 0)
       return
 
     const topBarHeight = 58
     const innerActive = activeElement.value?.closest<HTMLElement>(statusSelector) ?? null
     const current = innerActive ? statuses.find(s => s.contains(innerActive)) ?? null : null
-    const currentIndex = current ? statuses.indexOf(current) : -1
 
     let target: HTMLElement
-    if (currentIndex === -1) {
-      target = statuses[0]
+    if (!current) {
+      // No focus on a top-level card. Pick the one closest to where the user
+      // is currently looking (closest to topBarHeight) so subsequent presses
+      // resume near where they were rather than jumping to the very top.
+      target = statuses.reduce((closest, c) =>
+        Math.abs(c.getBoundingClientRect().top - topBarHeight)
+        < Math.abs(closest.getBoundingClientRect().top - topBarHeight)
+          ? c
+          : closest,
+      )
     }
     else {
+      const currentIndex = statuses.indexOf(current)
       const nextIndex = direction === 'next'
         ? Math.min(currentIndex + 1, statuses.length - 1)
         : Math.max(0, currentIndex - 1)
@@ -113,11 +136,22 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
     }
 
     // No top-level card to advance to: nudge the viewport so virtua can extend
-    // its buffer (or the paginator's end-anchor can come into view). Constant
-    // amount so repeated presses always make progress.
+    // its buffer (or the paginator's end-anchor can come into view). On the
+    // first attempt of a given keypress, schedule one retry on the next frame
+    // — but only if virtua actually mounted new top-level cards during the
+    // nudge, so a press at the genuine end of the timeline doesn't recurse.
     if (current && target === current) {
+      if (retried)
+        return
+      const before = new Set(statuses)
       const nudge = window.innerHeight / 2
       y.value += direction === 'next' ? nudge : -nudge
+      requestAnimationFrame(() => {
+        const after = Array.from(document.querySelectorAll<HTMLElement>(statusSelector))
+          .filter(c => !c.parentElement?.closest(statusSelector) && c.offsetParent !== null)
+        if (after.some(c => !before.has(c)))
+          focusNextOrPreviousStatus(direction, true)
+      })
       return
     }
 
