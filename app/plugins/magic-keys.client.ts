@@ -111,6 +111,10 @@ export default defineNuxtPlugin(({ $scrollToTop }) => {
     const innerActive = activeElement.value?.closest<HTMLElement>(statusSelector) ?? null
     const current = innerActive ? statuses.find(s => s.contains(innerActive)) ?? null : null
     if (!current) {
+      // On a status detail page, start from the URL-indicated post
+      const detail = statuses.find(s => s.getAttribute('aria-roledescription') === 'status-details')
+      if (detail)
+        return detail
       const distances = statuses.map(el => Math.abs(el.getBoundingClientRect().top - topBar))
       const nearestToTopBar = distances.reduce((best, d, i) => d < distances[best] ? i : best, 0)
       return statuses[nearestToTopBar]
